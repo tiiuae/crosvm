@@ -68,7 +68,7 @@ pub mod aarch64 {
     pub mod bindings;
     use base::ioctl_ior_nr;
     use base::ioctl_iow_nr;
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     use base::ioctl_iowr_nr;
     pub use bindings::*;
 
@@ -83,7 +83,7 @@ pub mod aarch64 {
     );
     ioctl_iow_nr!(KVM_ARM_VCPU_FINALIZE, KVMIO, 0xc2, libc::c_int);
 
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     ioctl_iowr_nr!(KVM_PVIOMMU_SET_CONFIG, KVMIO, 0x1, kvm_vfio_iommu_config);
 }
 #[cfg(target_arch = "aarch64")]
