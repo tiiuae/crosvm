@@ -164,6 +164,8 @@ const AARCH64_VMWDT_SIZE: u64 = 0x1000;
 const AARCH64_PCI_CAM_BASE_DEFAULT: u64 = 0x10000;
 // Default PCI MMIO configuration region size.
 const AARCH64_PCI_CAM_SIZE_DEFAULT: u64 = 0x1000000;
+// Default PCI IO region size.
+const AARCH64_PCI_IO_SIZE_DEFAULT: u64 = 0x10000;
 // Default PCI mem base address.
 const AARCH64_PCI_MEM_BASE_DEFAULT: u64 = 0x2000000;
 // Default PCI mem size.
@@ -510,6 +512,8 @@ impl arch::LinuxArch for AArch64 {
         arch_memory_layout: &Self::ArchMemoryLayout,
     ) -> SystemAllocatorConfig {
         let guest_phys_end = 1u64 << vm.get_guest_phys_addr_bits();
+        let io_base = 0x0;
+        let io_size = AARCH64_PCI_IO_SIZE_DEFAULT;
         // The platform MMIO region is immediately past the end of RAM.
         let plat_mmio_base = vm.get_memory().end_addr().offset();
         let plat_mmio_size = AARCH64_PLATFORM_MMIO_SIZE;
@@ -521,7 +525,7 @@ impl arch::LinuxArch for AArch64 {
                 panic!("guest_phys_end {guest_phys_end:#x} < high_mmio_base {high_mmio_base:#x}",);
             });
         SystemAllocatorConfig {
-            io: None,
+            io: AddressRange::from_start_and_size(io_base, io_size),
             low_mmio: arch_memory_layout.pci_mem,
             high_mmio: AddressRange::from_start_and_size(high_mmio_base, high_mmio_size)
                 .expect("invalid high mmio region"),
@@ -992,6 +996,13 @@ impl arch::LinuxArch for AArch64 {
                 }));
             };
 
+        if let Some(io_alloc) = system_allocator.io_allocator() {
+            add_pci_ranges(
+                io_alloc,
+                PciAddressSpace::Io,
+                false, // prefetchable
+            );
+        }
         add_pci_ranges(
             system_allocator.mmio_allocator(MmioType::Low),
             PciAddressSpace::Memory,
