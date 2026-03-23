@@ -3,7 +3,5 @@
     "python.formatting.provider": "black",
     "python.analysis.typeCheckingMode": "strict",
     // Rust
-    "rust-analyzer.cargo.features": [
-        "all-x86_64"
-    ]
+    "rust-analyzer.cargo.target": "aarch64-unknown-linux-gnu"
 }
