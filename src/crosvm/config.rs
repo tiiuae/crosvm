@@ -108,7 +108,7 @@ pub enum IrqChipKind {
     #[serde(rename_all = "kebab-case")]
     Kernel {
         /// Whether to setup a virtual ITS controller (for MSI interrupt support) if the hypervisor
-        /// supports it. Will eventually be enabled by default.
+        /// supports it.
         #[cfg(target_arch = "aarch64")]
         #[serde(default)]
         allow_vgic_its: bool,
@@ -123,7 +123,7 @@ impl Default for IrqChipKind {
     fn default() -> Self {
         IrqChipKind::Kernel {
             #[cfg(target_arch = "aarch64")]
-            allow_vgic_its: false,
+            allow_vgic_its: true,
         }
     }
 }
