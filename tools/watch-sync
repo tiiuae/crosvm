@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -e -o pipefail
+if [[ "$#" -lt 1 ]]; then
+	echo >&2 "[E] Missing argument: destination"
+	exit 1
+fi
+dest=$1
+if [[ "$dest" =~ :$ ]]; then
+	dest="${dest}~"
+fi
+set -x
+fd | entr rsync -vi -r -z -tl --delete-after --exclude='.git/modules' --filter=':- .gitignore' ${PWD}/ ${dest}/crosvm/
