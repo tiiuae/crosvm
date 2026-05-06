@@ -468,6 +468,31 @@ pub fn create_virtio_snd_device(
     })
 }
 
+#[cfg(feature = "bpmp")]
+pub fn create_bpmp_proxy_device(
+    protection_type: ProtectionType,
+    jail_config: Option<&JailConfig>,
+) -> DeviceResult {
+    let jail = if let Some(jail_config) = jail_config {
+        let mut config = SandboxConfig::new(jail_config, "bpmp_proxy_device");
+        config.bind_mounts = true;
+        let mut jail =
+            create_sandbox_minijail(&jail_config.pivot_root, MAX_OPEN_FILES_DEFAULT, &config)?;
+        let system_bus_socket_path = Path::new("/run/dbus/system_bus_socket");
+        jail.mount_bind(system_bus_socket_path, system_bus_socket_path, true)?;
+        Some(jail)
+    } else {
+        None
+    };
+
+    let dev = virtio::BpmpDevice::new(virtio::base_features(protection_type))?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail,
+    })
+}
+
 pub fn create_single_touch_device<T: IntoUnixStream>(
     protection_type: ProtectionType,
     jail_config: Option<&JailConfig>,

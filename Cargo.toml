@@ -233,6 +233,9 @@ audio = ["devices/audio", "vm_control/audio"]
 ## information.
 balloon = ["devices/balloon", "vm_control/balloon"]
 
+## Enables BPMP proxy backend.
+bpmp = ["devices/bpmp", "arch/bpmp"]
+
 ## Enables the composite-disk format, which adds protobufs as a dependency of the build. This format
 ## is intended to speed up crosvm's usage in CI environments that might otherwise have to
 ## concatenate large file system images into a single disk image.

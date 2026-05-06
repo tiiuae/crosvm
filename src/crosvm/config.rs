@@ -619,6 +619,8 @@ pub struct Config {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     pub boost_uclamp: bool,
     pub boot_cpu: usize,
+    #[cfg(feature = "bpmp")]
+    pub bpmp_proxy: bool,
     #[cfg(target_arch = "x86_64")]
     pub break_linux_pci_config_io: bool,
     #[cfg(windows)]
@@ -852,6 +854,8 @@ impl Default for Config {
             block_control_tube: Vec::new(),
             #[cfg(windows)]
             block_vhost_user_tube: Vec::new(),
+            #[cfg(feature = "bpmp")]
+            bpmp_proxy: false,
             #[cfg(target_arch = "x86_64")]
             break_linux_pci_config_io: false,
             #[cfg(windows)]
