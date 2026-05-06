@@ -516,6 +516,16 @@ fn create_virtio_devices(
         }
     }
 
+    #[cfg(feature = "bpmp")]
+    {
+        if cfg.bpmp_proxy {
+            devs.push(create_bpmp_proxy_device(
+                cfg.protection_type,
+                cfg.jail_config.as_ref(),
+            )?);
+        }
+    }
+
     let mut keyboard_idx = 0;
     let mut mouse_idx = 0;
     let mut rotary_idx = 0;
@@ -1652,6 +1662,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         smccc_trng: cfg.smccc_trng,
         #[cfg(target_arch = "aarch64")]
         sve_config: cfg.sve.unwrap_or_default(),
+        #[cfg(feature = "bpmp")]
+        bpmp_proxy: cfg.bpmp_proxy,
     })
 }
 

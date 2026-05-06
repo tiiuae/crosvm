@@ -476,6 +476,8 @@ pub struct VmComponents {
     pub android_fstab: Option<File>,
     pub boot_cpu: usize,
     pub bootorder_fw_cfg_blob: Vec<u8>,
+    #[cfg(feature = "bpmp")]
+    pub bpmp_proxy: bool,
     #[cfg(target_arch = "x86_64")]
     pub break_linux_pci_config_io: bool,
 

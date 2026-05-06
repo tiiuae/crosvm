@@ -117,10 +117,14 @@ cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
         mod p9;
         mod pmem;
+        #[cfg(feature = "bpmp")]
+        mod bpmp_proxy;
 
         pub mod wl;
         pub mod fs;
 
+        #[cfg(feature = "bpmp")]
+        pub use self::bpmp_proxy::BpmpDevice;
         pub use self::iommu::sys::linux::vfio_wrapper;
         #[cfg(feature = "net")]
         pub use self::net::VhostNetParameters;
@@ -188,6 +192,8 @@ pub enum DeviceType {
     Tpm = virtio_ids::VIRTIO_ID_TPM,
     Pvclock = virtio_ids::VIRTIO_ID_PVCLOCK,
     Media = virtio_ids::VIRTIO_ID_MEDIA,
+    #[cfg(feature = "bpmp")]
+    Bpmp = virtio_ids::VIRTIO_ID_BPMP,
 }
 
 impl DeviceType {
@@ -219,6 +225,8 @@ impl DeviceType {
             DeviceType::Tpm => 1,           // request queue
             DeviceType::Pvclock => 1,       // request queue
             DeviceType::Media => 2,         // commandq, eventq
+            #[cfg(feature = "bpmp")]
+            DeviceType::Bpmp => 1,          // request queue
         }
     }
 }
@@ -249,6 +257,8 @@ impl std::fmt::Display for DeviceType {
             DeviceType::Mac80211HwSim => write!(f, "mac80211-hwsim"),
             DeviceType::Scmi => write!(f, "scmi"),
             DeviceType::Media => write!(f, "media"),
+            #[cfg(feature = "bpmp")]
+            DeviceType::Bpmp => write!(f, "bpmp"),
         }
     }
 }
