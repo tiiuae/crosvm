@@ -8,7 +8,7 @@ use anyhow::bail;
 use anyhow::Context;
 use base::debug;
 use base::error;
-use base::info;
+use base::trace;
 use base::AsRawDescriptor;
 use base::Event;
 use base::EventToken;
@@ -69,8 +69,6 @@ struct Worker {
 
 impl Worker {
     fn perform_work(&mut self, desc: &mut DescriptorChain) -> anyhow::Result<u32> {
-        debug!("got {} descriptors", desc.count);
-
         let request_len = desc.reader.available_bytes();
         if request_len > BPMP_MAX_REQ_SIZE {
             bail!(Error::RequestTooLong { size: request_len });
@@ -79,8 +77,8 @@ impl Worker {
         let mut request = vec![0u8; request_len];
         desc.reader.read_exact(&mut request)?;
 
-        debug!("writing {} bytes to backend", request_len);
-        debug!("req :\n{:02X?}", request);
+        trace!("writing {} bytes to backend", request_len);
+        trace!("req :\n{:02X?}", request);
 
         let response_len = desc.writer.available_bytes();
         if response_len < BPMP_MAX_RESP_SIZE {
@@ -92,13 +90,13 @@ impl Worker {
 
         if let Err(e) = self.backend.write_all(&request) {
             match e.raw_os_error() {
-                None => info!("not an OS error, continue"),
+                None => debug!("not an OS error, continue"),
                 Some(libc::ENOENT) => {
                     error!("driver is in a bad state, end transaction early");
                     bail!(Error::UninitializedHostDriver)
                 },
                 // TODO EBUSY
-                Some(code) => info!("backend write failed with non-fatal error: {}", code)
+                Some(code) => debug!("backend write failed with non-fatal error: {}", code)
             }
         }
 
@@ -108,11 +106,11 @@ impl Worker {
             // most errors in read are fatal
             Err(e) => bail!(Error::BackendReadError { error: e })
         };
-        debug!("read {} bytes from backend", n);
+        trace!("read {} bytes from backend", n);
         if n > BPMP_MAX_RESP_SIZE {
             bail!(Error::ResponseTooLong { size: n });
         }
-        debug!("resp :\n{:02X?}", response);
+        trace!("resp :\n{:02X?}", response);
         desc.writer.write_all(&response[..n])?;
 
         Ok(desc.writer.bytes_written() as u32)
