@@ -874,6 +874,11 @@ impl VfioPciDevice {
         self.pci_address
     }
 
+    pub fn pviommu_info(&self) -> Option<(u32, Vec<u32>)> {
+        let (_iommu_type, id, vsids) = self.device.iommu()?;
+        Some((id?, vsids.to_vec()))
+    }
+
     pub fn is_gfx(&self) -> bool {
         self.base_class_code == PciClassCode::DisplayController
     }
@@ -1168,7 +1173,9 @@ impl VfioPciDevice {
             // these bars should be trapped, so that msix could be emulated.
             let mut mmaps = self.device.get_region_mmap(index);
 
-            if self.msix_cap.is_some() && !self.device.get_region_msix_mmappable(index) {
+            if self.msix_cap.is_some()
+                && (!self.device.get_region_msix_mmappable(index) || self.device.iommu().is_some())
+            {
                 mmaps = self.remove_bar_mmap_msix(index, mmaps);
             }
             if mmaps.is_empty() {

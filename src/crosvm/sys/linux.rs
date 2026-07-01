@@ -932,6 +932,7 @@ fn create_devices(
     vfio_container_manager: &mut VfioContainerManager,
     // Stores a set of PID of child processes that are suppose to exit cleanly.
     worker_process_pids: &mut BTreeSet<Pid>,
+    #[cfg(target_arch = "aarch64")] pci_pviommu_info: &mut Vec<(u32, u32, Vec<u32>)>,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
     #[cfg(feature = "balloon")]
@@ -976,6 +977,16 @@ fn create_devices(
                                 .to_u32(),
                             Arc::new(Mutex::new(Box::new(viommu_mapper))),
                         );
+                    }
+
+                    #[cfg(target_arch = "aarch64")]
+                    if let Some((pviommu_id, vsids)) = vfio_pci_device.pviommu_info() {
+                        if let Some(pci_addr) = vfio_pci_device.pci_address() {
+                            let rid = ((pci_addr.bus as u32) << 8)
+                                | ((pci_addr.dev as u32) << 3)
+                                | (pci_addr.func as u32);
+                            pci_pviommu_info.push((rid, pviommu_id, vsids));
+                        }
                     }
 
                     devices.push((Box::new(vfio_pci_device), jail));
@@ -1655,6 +1666,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         force_s2idle: cfg.force_s2idle,
         pvm_fw: pvm_fw_image,
         pci_config: cfg.pci_config,
+        #[cfg(target_arch = "aarch64")]
+        pci_pviommu_info: Vec::new(),
         boot_cpu: cfg.boot_cpu,
         vfio_platform_pm: cfg.vfio_platform_pm,
         #[cfg(target_arch = "aarch64")]
@@ -2309,6 +2322,9 @@ fn run_vm(
 
     let mut worker_process_pids = BTreeSet::new();
 
+    #[cfg(target_arch = "aarch64")]
+    let mut pci_pviommu_info: Vec<(u32, u32, Vec<u32>)> = Vec::new();
+
     let mut devices = create_devices(
         &cfg,
         &*vm,
@@ -2325,6 +2341,8 @@ fn run_vm(
         &reg_evt_wrtube,
         &mut vfio_container_manager,
         &mut worker_process_pids,
+        #[cfg(target_arch = "aarch64")]
+        &mut pci_pviommu_info,
     )?;
 
     #[cfg(feature = "pci-hotplug")]
@@ -2497,6 +2515,11 @@ fn run_vm(
                 .map(|path| (*id, path.clone()))
         })
         .collect();
+
+    #[cfg(target_arch = "aarch64")]
+    {
+        components.pci_pviommu_info = pci_pviommu_info;
+    }
 
     let mut linux = Arch::build_vm(
         components,

@@ -1058,6 +1058,7 @@ impl arch::LinuxArch for AArch64 {
             device_tree_overlays,
             &serial_devices,
             components.virt_cpufreq_v2,
+            &components.pci_pviommu_info,
         )
         .map_err(Error::CreateFdt)?;
 

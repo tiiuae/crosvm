@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -446,6 +447,7 @@ fn create_pci_nodes(
     ranges: &[PciRange],
     dma_pool_phandle: Option<u32>,
     msi_parent_phandle: Option<u32>,
+    pci_iommu_map: &[(u32, u32, Vec<u32>)],
 ) -> Result<()> {
     // Add devicetree nodes describing a PCI generic host controller.
     // See Documentation/devicetree/bindings/pci/host-generic-pci.txt in the kernel
@@ -520,6 +522,15 @@ fn create_pci_nodes(
     }
     if let Some(msi_parent_phandle) = msi_parent_phandle {
         pci_node.set_prop("msi-parent", msi_parent_phandle)?;
+    }
+    let mut iommu_map_entries: Vec<u32> = Vec::new();
+    for (rid, pviommu_phandle, vsids) in pci_iommu_map {
+        for vsid in vsids {
+            iommu_map_entries.extend_from_slice(&[*rid, *pviommu_phandle, *vsid, 1]);
+        }
+    }
+    if !iommu_map_entries.is_empty() {
+        pci_node.set_prop("iommu-map", iommu_map_entries)?;
     }
     Ok(())
 }
@@ -655,6 +666,7 @@ pub fn create_fdt(
     device_tree_overlays: Vec<DtbOverlay>,
     serial_devices: &[SerialDeviceInfo],
     virt_cpufreq_v2: bool,
+    pci_pviommu_info: &[(u32, u32, Vec<u32>)],
 ) -> Result<()> {
     let mut fdt = Fdt::new(&[]);
     let mut phandles_key_cache = Vec::new();
@@ -711,6 +723,30 @@ pub fn create_fdt(
     }
     create_serial_nodes(&mut fdt, serial_devices)?;
     create_psci_node(&mut fdt, &psci_version)?;
+
+    let all_pviommu_ids: Vec<u32> = {
+        let mut ids: BTreeSet<u32> = get_pkvm_pviommu_ids(&platform_dev_resources)?
+            .into_iter()
+            .collect();
+        ids.extend(pci_pviommu_info.iter().map(|(_rid, id, _vsids)| *id));
+        ids.into_iter().collect()
+    };
+
+    let mut pviommu_id_to_phandle: BTreeMap<u32, u32> = BTreeMap::new();
+    for (index, &id) in all_pviommu_ids.iter().enumerate() {
+        let phandle = create_pkvm_pviommu_node(&mut fdt, index, id)?;
+        pviommu_id_to_phandle.insert(id, phandle);
+    }
+
+    let pci_iommu_map: Vec<(u32, u32, Vec<u32>)> = pci_pviommu_info
+        .iter()
+        .filter_map(|(rid, pviommu_id, vsids)| {
+            pviommu_id_to_phandle
+                .get(pviommu_id)
+                .map(|&phandle| (*rid, phandle, vsids.clone()))
+        })
+        .collect();
+
     create_pci_nodes(
         &mut fdt,
         pci_irqs,
@@ -718,6 +754,7 @@ pub fn create_fdt(
         pci_ranges,
         dma_pool_phandle,
         has_vgic_its.then_some(PHANDLE_GIC_ITS),
+        &pci_iommu_map,
     )?;
     create_rtc_node(&mut fdt)?;
     if let Some((bat_mmio_base, bat_irq)) = bat_mmio_base_and_irq {
@@ -734,11 +771,9 @@ pub fn create_fdt(
         }
     }
 
-    let pviommu_ids = get_pkvm_pviommu_ids(&platform_dev_resources)?;
-
     let cache_offset_pviommu = phandles_key_cache.len();
     // Hack to extend the lifetime of the Strings as keys of phandles (i.e. &str).
-    phandles_key_cache.extend(pviommu_ids.iter().map(|id| format!("pviommu{id}")));
+    phandles_key_cache.extend(all_pviommu_ids.iter().map(|id| format!("pviommu{id}")));
 
     let cache_offset_pdomains = phandles_key_cache.len();
     let power_domain_count = platform_dev_resources
@@ -750,9 +785,10 @@ pub fn create_fdt(
     let pviommu_phandle_keys = &phandles_key_cache[cache_offset_pviommu..cache_offset_pdomains];
     let pdomains_phandle_keys = &phandles_key_cache[cache_offset_pdomains..];
 
-    for (index, (id, key)) in pviommu_ids.iter().zip(pviommu_phandle_keys).enumerate() {
-        let phandle = create_pkvm_pviommu_node(&mut fdt, index, *id)?;
-        phandles.insert(key, phandle);
+    for (id, key) in all_pviommu_ids.iter().zip(pviommu_phandle_keys) {
+        if let Some(&phandle) = pviommu_id_to_phandle.get(id) {
+            phandles.insert(key, phandle);
+        }
     }
 
     for (index, key) in pdomains_phandle_keys.iter().enumerate() {
