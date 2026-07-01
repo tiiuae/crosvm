@@ -522,6 +522,8 @@ pub struct VmComponents {
     pub no_smt: bool,
 
     pub pci_config: PciConfig,
+    #[cfg(target_arch = "aarch64")]
+    pub pci_pviommu_info: Vec<(u32, u32, Vec<u32>)>,
     pub pflash_block_size: u32,
     pub pflash_image: Option<File>,
     pub pstore: Option<Pstore>,

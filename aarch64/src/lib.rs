@@ -1085,6 +1085,7 @@ impl arch::LinuxArch for AArch64 {
             &serial_devices,
             components.virt_cpufreq_v2,
             enable_nested,
+            &components.pci_pviommu_info,
         )
         .map_err(Error::CreateFdt)?;
 
