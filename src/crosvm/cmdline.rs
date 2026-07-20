@@ -2122,7 +2122,7 @@ pub struct RunCommand {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[argh(
         option,
-        arg_name = "PATH[,guest-address=<BUS:DEVICE.FUNCTION>][,iommu=viommu|coiommu|pkvm-iommu|off][,dt-symbol=<SYMBOL>]"
+        arg_name = "PATH[,guest-address=<BUS:DEVICE.FUNCTION>][,iommu=viommu|coiommu|pkvm-iommu|off][,dt-symbol=<SYMBOL>][,guest-mmio-base=<ADDR>,guest-mmio-size=<SIZE>]"
     )]
     /// path to sysfs of VFIO device.
     ///     guest-address=<BUS:DEVICE.FUNCTION> - PCI address
@@ -2134,6 +2134,11 @@ pub struct RunCommand {
     ///        to use for this device.
     ///     dt-symbol=<SYMBOL> - the symbol that labels the device tree
     ///        node in the device tree overlay file.
+    ///     guest-mmio-base=<ADDR>,guest-mmio-size=<SIZE> - place this
+    ///        platform device's MMIO region at guest physical ADDR
+    ///        (identity mapping for pKVM DMA carveouts) instead of
+    ///        auto-allocating. SIZE must equal the device's region 0
+    ///        size. Platform devices only; both keys required together.
     pub vfio: Vec<VfioOption>,
 
     #[cfg(any(target_os = "android", target_os = "linux"))]

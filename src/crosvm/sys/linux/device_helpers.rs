@@ -1558,6 +1558,7 @@ pub fn create_vfio_device(
     coiommu_endpoints: Option<&mut Vec<u16>>,
     iommu_dev: IommuDevType,
     dt_symbol: Option<String>,
+    guest_mmio: Option<(u64, u64)>,
     vfio_container_manager: &mut VfioContainerManager,
 ) -> DeviceResult<(VfioDeviceVariant, Option<Minijail>, Option<VfioWrapper>)> {
     let vfio_container = vfio_container_manager
@@ -1588,6 +1589,10 @@ pub fn create_vfio_device(
             let (vfio_host_tube_msix, vfio_device_tube_msix) =
                 Tube::pair().context("failed to create tube")?;
             add_control_tube(AnyControlTube::IrqTube(vfio_host_tube_msix));
+
+            if guest_mmio.is_some() {
+                bail!("guest-mmio-base is only supported for VFIO platform devices");
+            }
 
             let mut vfio_pci_device = VfioPciDevice::new(
                 vfio_path,
@@ -1639,8 +1644,11 @@ pub fn create_vfio_device(
                 bail!("hotplug is not supported for VFIO platform devices");
             }
 
-            let vfio_plat_dev =
-                VfioPlatformDevice::new(vfio_device, VmMemoryClient::new(vfio_device_tube_mem));
+            let vfio_plat_dev = VfioPlatformDevice::new(
+                vfio_device,
+                VmMemoryClient::new(vfio_device_tube_mem),
+                guest_mmio,
+            );
 
             Ok((
                 VfioDeviceVariant::Platform(vfio_plat_dev),

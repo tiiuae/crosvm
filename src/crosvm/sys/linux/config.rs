@@ -70,6 +70,16 @@ pub struct VfioOption {
     /// The symbol that labels the overlay device tree node which corresponds to this
     /// VFIO device.
     pub dt_symbol: Option<String>,
+
+    /// Guest physical address at which to place this platform VFIO device's MMIO region,
+    /// instead of auto-allocating from the platform MMIO pool. Used to give a pKVM DMA
+    /// carveout an identity (guest IPA == host PA) mapping. Platform devices only.
+    pub guest_mmio_base: Option<u64>,
+
+    /// Size of the region placed at `guest_mmio_base`; must equal the device's region 0
+    /// size. Required when `guest_mmio_base` is set (the size is needed to reserve the
+    /// guest RAM gap before the device is opened).
+    pub guest_mmio_size: Option<u64>,
 }
 
 #[derive(Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -507,6 +517,29 @@ mod tests {
             vfio.guest_address,
             Some(PciAddress::new(0, 0x42, 0x15, 4).unwrap())
         );
+    }
+
+    #[test]
+    fn vfio_platform_guest_mmio_base() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--vfio",
+                "/path/to/dev,iommu=pkvm-iommu,dt-symbol=carveout,guest-mmio-base=0xa0000000,guest-mmio-size=0x8000000",
+                "/dev/null",
+            ],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let vfio = config.vfio.first().unwrap();
+
+        assert_eq!(vfio.path, PathBuf::from("/path/to/dev"));
+        assert_eq!(vfio.iommu, IommuDevType::PkvmPviommu);
+        assert_eq!(vfio.dt_symbol.as_deref(), Some("carveout"));
+        assert_eq!(vfio.guest_mmio_base, Some(0xa000_0000));
+        assert_eq!(vfio.guest_mmio_size, Some(0x0800_0000));
     }
 
     #[test]

@@ -1020,6 +1020,11 @@ fn create_devices(
         let mut coiommu_attached_endpoints = Vec::new();
 
         for vfio_dev in &cfg.vfio {
+            let guest_mmio = match (vfio_dev.guest_mmio_base, vfio_dev.guest_mmio_size) {
+                (Some(base), Some(size)) => Some((base, size)),
+                (None, None) => None,
+                _ => bail!("guest-mmio-base and guest-mmio-size must be specified together"),
+            };
             let (dev, jail, viommu_mapper) = create_vfio_device(
                 cfg.jail_config.as_ref(),
                 vm,
@@ -1032,6 +1037,7 @@ fn create_devices(
                 Some(&mut coiommu_attached_endpoints),
                 vfio_dev.iommu,
                 vfio_dev.dt_symbol.clone(),
+                guest_mmio,
                 vfio_container_manager,
             )?;
             match dev {
@@ -1856,6 +1862,54 @@ fn punch_holes_in_guest_mem_layout_for_mappings(
         .collect())
 }
 
+// Removes each `(base, size)` range from `guest_mem_layout` entirely, leaving a true gap with
+// no memory region (unlike punch_holes, which re-inserts a file-backed sub-region). Used to
+// reserve guest physical space for a platform VFIO device pinned at a fixed guest address
+// (pKVM identity carveout), so the vfio device is the sole claimant of that GPA.
+fn carve_gaps_in_guest_mem_layout(
+    guest_mem_layout: Vec<(GuestAddress, u64, MemoryRegionOptions)>,
+    gaps: &[(u64, u64)],
+) -> Result<Vec<(GuestAddress, u64, MemoryRegionOptions)>> {
+    let mut layout = guest_mem_layout;
+    for &(base, size) in gaps {
+        let gap_start = base;
+        let gap_end = base
+            .checked_add(size)
+            .ok_or_else(|| anyhow!("guest-mmio range {base:#x}+{size:#x} overflows"))?;
+        let mut next = Vec::with_capacity(layout.len() + 1);
+        let mut covered = false;
+        for (addr, region_size, options) in layout.into_iter() {
+            let region_start = addr.offset();
+            let region_end = region_start + region_size;
+            if gap_end <= region_start || gap_start >= region_end {
+                next.push((addr, region_size, options));
+                continue;
+            }
+            anyhow::ensure!(
+                region_start <= gap_start && gap_end <= region_end,
+                "guest-mmio gap {gap_start:#x}..{gap_end:#x} must lie within a single RAM region"
+            );
+            covered = true;
+            if region_start < gap_start {
+                next.push((
+                    GuestAddress(region_start),
+                    gap_start - region_start,
+                    options.clone(),
+                ));
+            }
+            if gap_end < region_end {
+                next.push((GuestAddress(gap_end), region_end - gap_end, options));
+            }
+        }
+        anyhow::ensure!(
+            covered,
+            "guest-mmio gap {gap_start:#x}..{gap_end:#x} is not within guest RAM"
+        );
+        layout = next;
+    }
+    Ok(layout)
+}
+
 fn create_guest_memory(
     cfg: &Config,
     components: &VmComponents,
@@ -1869,6 +1923,15 @@ fn create_guest_memory(
         guest_mem_layout,
         &cfg.file_backed_mappings_ram,
     )?;
+
+    // Reserve true gaps for platform VFIO devices pinned at a fixed guest address: the vfio
+    // device installs the sole memslot there, so guest RAM must not cover it.
+    let platform_vfio_gaps: Vec<(u64, u64)> = cfg
+        .vfio
+        .iter()
+        .filter_map(|v| v.guest_mmio_base.zip(v.guest_mmio_size))
+        .collect();
+    let guest_mem_layout = carve_gaps_in_guest_mem_layout(guest_mem_layout, &platform_vfio_gaps)?;
 
     let mut guest_mem = GuestMemory::new_with_options(&guest_mem_layout)
         .context("failed to create guest memory")?;
@@ -2885,6 +2948,7 @@ fn add_hotplug_device(
                 } else {
                     IommuDevType::NoIommu
                 },
+                None,
                 None,
                 vfio_container_manager,
             )?;
@@ -5723,6 +5787,86 @@ mod tests {
                 ),
             ],
         );
+    }
+
+    #[test]
+    fn carve_gaps_removes_range_leaving_true_gap() {
+        // Gap in the middle of a single region -> two pieces, no middle region.
+        assert_eq!(
+            carve_gaps_in_guest_mem_layout(
+                vec![(GuestAddress(0x8000_0000), 0x4000_0000, Default::default())],
+                &[(0xA000_0000, 0x0800_0000)],
+            )
+            .unwrap(),
+            vec![
+                (GuestAddress(0x8000_0000), 0x2000_0000, Default::default()),
+                (GuestAddress(0xA800_0000), 0x1800_0000, Default::default()),
+            ],
+        );
+
+        // Gap at the region start -> no below-piece.
+        assert_eq!(
+            carve_gaps_in_guest_mem_layout(
+                vec![(GuestAddress(0x8000_0000), 0x4000_0000, Default::default())],
+                &[(0x8000_0000, 0x1000_0000)],
+            )
+            .unwrap(),
+            vec![(GuestAddress(0x9000_0000), 0x3000_0000, Default::default())],
+        );
+
+        // Gap at the region end -> no above-piece.
+        assert_eq!(
+            carve_gaps_in_guest_mem_layout(
+                vec![(GuestAddress(0x8000_0000), 0x4000_0000, Default::default())],
+                &[(0xB000_0000, 0x1000_0000)],
+            )
+            .unwrap(),
+            vec![(GuestAddress(0x8000_0000), 0x3000_0000, Default::default())],
+        );
+
+        // Gap == whole region -> region vanishes.
+        assert_eq!(
+            carve_gaps_in_guest_mem_layout(
+                vec![(GuestAddress(0x8000_0000), 0x1000_0000, Default::default())],
+                &[(0x8000_0000, 0x1000_0000)],
+            )
+            .unwrap(),
+            vec![],
+        );
+
+        // Multiple regions: gap in the first, second preserved, output stays sorted.
+        assert_eq!(
+            carve_gaps_in_guest_mem_layout(
+                vec![
+                    (GuestAddress(0x8000_0000), 0x4000_0000, Default::default()),
+                    (GuestAddress(0x1_0000_0000), 0x8_0000, Default::default()),
+                ],
+                &[(0xA000_0000, 0x0800_0000)],
+            )
+            .unwrap(),
+            vec![
+                (GuestAddress(0x8000_0000), 0x2000_0000, Default::default()),
+                (GuestAddress(0xA800_0000), 0x1800_0000, Default::default()),
+                (GuestAddress(0x1_0000_0000), 0x8_0000, Default::default()),
+            ],
+        );
+    }
+
+    #[test]
+    fn carve_gaps_rejects_invalid_ranges() {
+        // Gap spanning past the region end.
+        assert!(carve_gaps_in_guest_mem_layout(
+            vec![(GuestAddress(0x8000_0000), 0x1000_0000, Default::default())],
+            &[(0x8800_0000, 0x1000_0000)],
+        )
+        .is_err());
+
+        // Gap entirely outside guest RAM (above end-of-RAM).
+        assert!(carve_gaps_in_guest_mem_layout(
+            vec![(GuestAddress(0x8000_0000), 0x1000_0000, Default::default())],
+            &[(0xC000_0000, 0x0800_0000)],
+        )
+        .is_err());
     }
 
     #[cfg(target_arch = "aarch64")]

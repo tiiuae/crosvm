@@ -58,6 +58,8 @@ pub enum Error {
     ExistingAlloc(Alloc),
     #[error("Invalid Alloc: {0:?}")]
     InvalidAlloc(Alloc),
+    #[error("invalid fixed platform MMIO placement: {0}")]
+    InvalidPlatformMmioPlacement(String),
     #[error("IO port out of range: {0}")]
     IOPortOutOfRange(AddressRange),
     #[error("Platform MMIO address range not specified")]

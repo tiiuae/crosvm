@@ -54,6 +54,9 @@ pub struct VfioPlatformDevice {
     vm_memory_client: VmMemoryClient,
     // scratch MemoryMapping to avoid unmap beform vm exit
     mem: Vec<MemoryMapping>,
+    // Fixed (guest_pa, size) for region 0 instead of auto-allocation, for pKVM identity
+    // carveouts (guest IPA == host PA). None => allocate from the platform MMIO pool.
+    guest_mmio: Option<(u64, u64)>,
 }
 
 impl BusDevice for VfioPlatformDevice {
@@ -104,7 +107,11 @@ impl BusDeviceObj for VfioPlatformDevice {
 
 impl VfioPlatformDevice {
     /// Constructs a new Vfio Platform device for the given Vfio device
-    pub fn new(device: VfioDevice, vm_memory_client: VmMemoryClient) -> Self {
+    pub fn new(
+        device: VfioDevice,
+        vm_memory_client: VmMemoryClient,
+        guest_mmio: Option<(u64, u64)>,
+    ) -> Self {
         let dev = Arc::new(device);
         VfioPlatformDevice {
             device: dev,
@@ -113,6 +120,7 @@ impl VfioPlatformDevice {
             mmio_regions: Vec::new(),
             vm_memory_client,
             mem: Vec::new(),
+            guest_mmio,
         }
     }
 
@@ -177,16 +185,35 @@ impl VfioPlatformDevice {
         let mut ranges = Vec::new();
         for i in 0..self.device.get_region_count() {
             let size = self.device.get_region_size(i);
-            let alloc_id = resources.get_anon_alloc();
-            let allocator = resources
-                .mmio_platform_allocator()
-                .ok_or(resources::Error::MissingPlatformMMIOAddresses)?;
-            let start_addr = allocator.allocate_with_align(
-                size,
-                alloc_id,
-                "vfio_mmio".to_string(),
-                pagesize() as u64,
-            )?;
+
+            // A pinned base (pKVM identity carveout) covers a single region placed at a
+            // fixed guest PA that lives inside guest RAM (a gap is punched for it in
+            // create_guest_memory), so it bypasses the platform MMIO allocator entirely.
+            let start_addr = if let Some((base, expected_size)) = self.guest_mmio {
+                if self.device.get_region_count() != 1 {
+                    return Err(resources::Error::InvalidPlatformMmioPlacement(format!(
+                        "guest-mmio-base requires a single-region device, got {}",
+                        self.device.get_region_count()
+                    )));
+                }
+                if size != expected_size {
+                    return Err(resources::Error::InvalidPlatformMmioPlacement(format!(
+                        "guest-mmio-size {expected_size:#x} != device region 0 size {size:#x}"
+                    )));
+                }
+                base
+            } else {
+                let alloc_id = resources.get_anon_alloc();
+                let allocator = resources
+                    .mmio_platform_allocator()
+                    .ok_or(resources::Error::MissingPlatformMMIOAddresses)?;
+                allocator.allocate_with_align(
+                    size,
+                    alloc_id,
+                    "vfio_mmio".to_string(),
+                    pagesize() as u64,
+                )?
+            };
             ranges.push((start_addr, size));
 
             self.mmio_regions.push(MmioInfo {
