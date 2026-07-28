@@ -1866,6 +1866,7 @@ fn punch_holes_in_guest_mem_layout_for_mappings(
 // no memory region (unlike punch_holes, which re-inserts a file-backed sub-region). Used to
 // reserve guest physical space for a platform VFIO device pinned at a fixed guest address
 // (pKVM identity carveout), so the vfio device is the sole claimant of that GPA.
+// A range outside guest RAM needs no gap; one straddling a region boundary is rejected.
 fn carve_gaps_in_guest_mem_layout(
     guest_mem_layout: Vec<(GuestAddress, u64, MemoryRegionOptions)>,
     gaps: &[(u64, u64)],
@@ -1877,7 +1878,6 @@ fn carve_gaps_in_guest_mem_layout(
             .checked_add(size)
             .ok_or_else(|| anyhow!("guest-mmio range {base:#x}+{size:#x} overflows"))?;
         let mut next = Vec::with_capacity(layout.len() + 1);
-        let mut covered = false;
         for (addr, region_size, options) in layout.into_iter() {
             let region_start = addr.offset();
             let region_end = region_start + region_size;
@@ -1889,7 +1889,6 @@ fn carve_gaps_in_guest_mem_layout(
                 region_start <= gap_start && gap_end <= region_end,
                 "guest-mmio gap {gap_start:#x}..{gap_end:#x} must lie within a single RAM region"
             );
-            covered = true;
             if region_start < gap_start {
                 next.push((
                     GuestAddress(region_start),
@@ -1901,10 +1900,6 @@ fn carve_gaps_in_guest_mem_layout(
                 next.push((GuestAddress(gap_end), region_end - gap_end, options));
             }
         }
-        anyhow::ensure!(
-            covered,
-            "guest-mmio gap {gap_start:#x}..{gap_end:#x} is not within guest RAM"
-        );
         layout = next;
     }
     Ok(layout)
@@ -5854,19 +5849,30 @@ mod tests {
 
     #[test]
     fn carve_gaps_rejects_invalid_ranges() {
-        // Gap spanning past the region end.
+        // Gap straddling the region end.
         assert!(carve_gaps_in_guest_mem_layout(
             vec![(GuestAddress(0x8000_0000), 0x1000_0000, Default::default())],
             &[(0x8800_0000, 0x1000_0000)],
         )
         .is_err());
+    }
 
-        // Gap entirely outside guest RAM (above end-of-RAM).
-        assert!(carve_gaps_in_guest_mem_layout(
-            vec![(GuestAddress(0x8000_0000), 0x1000_0000, Default::default())],
-            &[(0xC000_0000, 0x0800_0000)],
-        )
-        .is_err());
+    #[test]
+    fn carve_gaps_leaves_ranges_outside_ram_untouched() {
+        let layout = vec![(GuestAddress(0x8000_0000), 0x1000_0000, Default::default())];
+
+        // Below the RAM base: the host1x syncpoint aperture case.
+        let below = carve_gaps_in_guest_mem_layout(layout.clone(), &[(0x6000_0000, 0x0400_0000)])
+            .expect("gap below RAM must be a no-op");
+        assert_eq!(below.len(), 1);
+        assert_eq!(below[0].0, GuestAddress(0x8000_0000));
+        assert_eq!(below[0].1, 0x1000_0000);
+
+        // Above end-of-RAM.
+        let above = carve_gaps_in_guest_mem_layout(layout, &[(0xC000_0000, 0x0800_0000)])
+            .expect("gap above RAM must be a no-op");
+        assert_eq!(above.len(), 1);
+        assert_eq!(above[0].1, 0x1000_0000);
     }
 
     #[cfg(target_arch = "aarch64")]
