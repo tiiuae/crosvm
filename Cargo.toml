@@ -98,7 +98,7 @@ members = [
     "vendor/generic/anti_tamper",
     "vendor/generic/crash_report",
     "vendor/generic/crypto",
-    "vendor/generic/devices",
+    "vendor/tegra234/devices",
     "vfio_sys",
     "vhost",
     "virtio_sys",
@@ -185,7 +185,7 @@ system_api = { path = "system_api" }
 tube_transporter = { path = "tube_transporter" }
 usb_sys = { path = "usb_sys" }
 usb_util = { path = "usb_util" }
-vendor_devices = { path = "vendor/generic/devices" }
+vendor_devices = { path = "vendor/tegra234/devices" }
 vfio_sys = { path = "vfio_sys" }
 vhost = { path = "vhost" }
 virtio_sys = { path = "virtio_sys" }
