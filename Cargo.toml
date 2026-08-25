@@ -98,6 +98,7 @@ members = [
     "vendor/generic/anti_tamper",
     "vendor/generic/crash_report",
     "vendor/generic/crypto",
+    "vendor/generic/devices",
     "vfio_sys",
     "vhost",
     "virtio_sys",
@@ -184,6 +185,7 @@ system_api = { path = "system_api" }
 tube_transporter = { path = "tube_transporter" }
 usb_sys = { path = "usb_sys" }
 usb_util = { path = "usb_util" }
+vendor_devices = { path = "vendor/generic/devices" }
 vfio_sys = { path = "vfio_sys" }
 vhost = { path = "vhost" }
 virtio_sys = { path = "virtio_sys" }
@@ -616,6 +618,7 @@ acpi_tables = { workspace = true }
 vm_memory = { workspace = true }
 vmm_vhost = { workspace = true }
 uuid = { workspace = true, optional = true }
+vendor_devices = { workspace = true }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 riscv64 = { workspace = true }
