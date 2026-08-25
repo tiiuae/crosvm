@@ -2114,6 +2114,12 @@ pub struct RunCommand {
     /// move all vCPU threads to this CGroup (default: nothing moves)
     pub vcpu_cgroup_path: Option<PathBuf>,
 
+    #[argh(option, arg_name = "DEVICE")]
+    /// enable vendor-specific virtio devices. The set of valid options is defined by the
+    /// `vendor_devices` crate compiled in this build. Generic builds do not include any
+    /// devices.
+    pub vendor_device: Vec<String>,
+
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[argh(
         option,
@@ -3273,6 +3279,12 @@ impl TryFrom<RunCommand> for super::config::Config {
         {
             cfg.virtio_device_modules
                 .push(device_virtio_rng::VirtioRngModule.into());
+        }
+
+        for arg in cmd.vendor_device {
+            let module = vendor_devices::parse_vendor_device(&arg)
+                .map_err(|e| format!("failed to parse --vendor-device: {e:#}"))?;
+            cfg.virtio_device_modules.push(module.into());
         }
 
         // Now do validation of constructed config

@@ -82,5 +82,6 @@ declare_any_virtio_device_module! {
         #[cfg(feature = "vtpm")]
         Tpm(device_virtio_tpm::VirtioTpmModule),
         Vsock(devices::virtio::VirtioVsockModule),
+        Vendor(vendor_devices::VendorDeviceModule),
     }
 }

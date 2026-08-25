@@ -181,9 +181,45 @@ pub enum DeviceType {
     Tpm = virtio_ids::VIRTIO_ID_TPM,
     Pvclock = virtio_ids::VIRTIO_ID_PVCLOCK,
     Media = virtio_ids::VIRTIO_ID_MEDIA,
+    /// A downstream defined device. We want the `vendor` crates to be able to use `devices`
+    /// structures, so use only generic types here to avoid creating a reverse dependency.
+    VendorDevice {
+        id: u32,
+        min_queues: usize,
+    },
 }
 
 impl DeviceType {
+    /// DeviceType cannot be cast to a numeric type with 'as u32' because of VendorDevice,
+    /// so use this intermediate function
+    pub fn virtio_id(&self) -> u32 {
+        match self {
+            DeviceType::Net => virtio_ids::VIRTIO_ID_NET,
+            DeviceType::Block => virtio_ids::VIRTIO_ID_BLOCK,
+            DeviceType::Console => virtio_ids::VIRTIO_ID_CONSOLE,
+            DeviceType::Rng => virtio_ids::VIRTIO_ID_RNG,
+            DeviceType::Balloon => virtio_ids::VIRTIO_ID_BALLOON,
+            DeviceType::Scsi => virtio_ids::VIRTIO_ID_SCSI,
+            DeviceType::P9 => virtio_ids::VIRTIO_ID_9P,
+            DeviceType::Gpu => virtio_ids::VIRTIO_ID_GPU,
+            DeviceType::Input => virtio_ids::VIRTIO_ID_INPUT,
+            DeviceType::Vsock => virtio_ids::VIRTIO_ID_VSOCK,
+            DeviceType::Iommu => virtio_ids::VIRTIO_ID_IOMMU,
+            DeviceType::Sound => virtio_ids::VIRTIO_ID_SOUND,
+            DeviceType::Fs => virtio_ids::VIRTIO_ID_FS,
+            DeviceType::Pmem => virtio_ids::VIRTIO_ID_PMEM,
+            DeviceType::Mac80211HwSim => virtio_ids::VIRTIO_ID_MAC80211_HWSIM,
+            DeviceType::VideoEncoder => virtio_ids::VIRTIO_ID_VIDEO_ENCODER,
+            DeviceType::VideoDecoder => virtio_ids::VIRTIO_ID_VIDEO_DECODER,
+            DeviceType::Scmi => virtio_ids::VIRTIO_ID_SCMI,
+            DeviceType::Wl => virtio_ids::VIRTIO_ID_WL,
+            DeviceType::Tpm => virtio_ids::VIRTIO_ID_TPM,
+            DeviceType::Pvclock => virtio_ids::VIRTIO_ID_PVCLOCK,
+            DeviceType::Media => virtio_ids::VIRTIO_ID_MEDIA,
+            DeviceType::VendorDevice { id, .. } => *id,
+        }
+    }
+
     /// Returns the minimum number of queues that a device of the corresponding type must support.
     ///
     /// Note that this does not mean a driver must activate these queues, only that they must be
@@ -212,7 +248,14 @@ impl DeviceType {
             DeviceType::Tpm => 1,           // request queue
             DeviceType::Pvclock => 1,       // request queue
             DeviceType::Media => 2,         // commandq, eventq
+            DeviceType::VendorDevice { min_queues, .. } => *min_queues,
         }
+    }
+}
+
+impl From<DeviceType> for u32 {
+    fn from(device_type: DeviceType) -> u32 {
+        device_type.virtio_id()
     }
 }
 
@@ -242,6 +285,7 @@ impl std::fmt::Display for DeviceType {
             DeviceType::Mac80211HwSim => write!(f, "mac80211-hwsim"),
             DeviceType::Scmi => write!(f, "scmi"),
             DeviceType::Media => write!(f, "media"),
+            DeviceType::VendorDevice { id, .. } => write!(f, "vendor-device-{}", id),
         }
     }
 }

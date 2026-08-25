@@ -126,7 +126,7 @@ impl VirtioMmioDevice {
     }
 
     fn device_type(&self) -> u32 {
-        self.device.device_type() as u32
+        self.device.device_type().virtio_id()
     }
 
     /// Activates the underlying `VirtioDevice`. `assign_irq` has to be called first.
