@@ -506,7 +506,6 @@ all-aarch64 = [
     "gunyah",
     "halla",
     "libaaudio_stub",
-    "bpmp",
 ]
 
 ## All features that are compiled and tested for riscv64
