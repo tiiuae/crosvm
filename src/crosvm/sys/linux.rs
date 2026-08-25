@@ -521,16 +521,6 @@ fn create_virtio_devices(
         info!("virtio-pvclock is enabled for this vm");
     }
 
-    #[cfg(feature = "bpmp")]
-    {
-        if cfg.bpmp_proxy {
-            devs.push((
-                "bpmp",
-                create_bpmp_proxy_device(cfg.protection_type, cfg.jail_config.as_ref())?,
-            ));
-        }
-    }
-
     let mut keyboard_idx = 0;
     let mut mouse_idx = 0;
     let mut rotary_idx = 0;
@@ -1743,8 +1733,6 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         sve_config: cfg.sve.unwrap_or_default(),
         #[cfg(target_arch = "aarch64")]
         nested: cfg.nested.mode,
-        #[cfg(feature = "bpmp")]
-        bpmp_proxy: cfg.bpmp_proxy,
     })
 }
 

@@ -8,7 +8,6 @@ license = "BSD-3-Clause"
 [features]
 gdb = ["gdbstub", "gdbstub_arch", "arch/gdb"]
 swap = ["swap/enable"]
-bpmp = []
 
 [dependencies]
 aarch64_sys_reg = { workspace = true }

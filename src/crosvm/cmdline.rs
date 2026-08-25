@@ -908,11 +908,6 @@ pub struct RunCommand {
     /// to ramp up higher frequencies or place vCPU threads on larger cores.
     pub boost_uclamp: Option<bool>,
 
-    #[cfg(feature = "bpmp")]
-    #[argh(switch)]
-    /// setup the BPMP host proxy device for Tegra platforms
-    pub bpmp_proxy: Option<bool>,
-
     #[cfg(target_arch = "x86_64")]
     #[argh(switch)]
     /// break linux PCI configuration space io probing, to force the use of
@@ -2672,10 +2667,6 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
         cfg.pstore = cmd.pstore;
 
-        #[cfg(feature = "bpmp")]
-        {
-            cfg.bpmp_proxy = cmd.bpmp_proxy.unwrap_or_default();
-        }
         cfg.enable_fw_cfg = cmd.enable_fw_cfg.unwrap_or_default();
         cfg.fw_cfg_parameters = cmd.fw_cfg;
 

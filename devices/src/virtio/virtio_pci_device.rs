@@ -471,11 +471,6 @@ impl VirtioPciDevice {
                 PciClassCode::BaseSystemPeripheral,
                 &PciBaseSystemPeripheralSubclass::Other as &dyn PciSubclass,
             ),
-            #[cfg(feature = "bpmp")]
-            DeviceType::Bpmp => (
-                PciClassCode::BaseSystemPeripheral,
-                &PciBaseSystemPeripheralSubclass::Other as &dyn PciSubclass,
-            ),
         };
 
         let num_interrupts = device.num_interrupts();

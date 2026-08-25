@@ -11,7 +11,6 @@ gdb = ["gdbstub", "gdbstub_arch"]
 trace_marker = ["cros_tracing/trace_marker"]
 seccomp_trace = []
 swap = ["swap/enable"]
-bpmp = []
 
 [dependencies]
 acpi_tables = { workspace = true }
