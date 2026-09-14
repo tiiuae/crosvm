@@ -331,15 +331,13 @@ fn create_chosen_node(
 }
 
 fn create_config_node(fdt: &mut Fdt, kernel_region: AddressRange) -> Result<()> {
-    let addr: u32 = kernel_region
-        .start
-        .try_into()
-        .map_err(|_| Error::PropertyValueTooLarge)?;
-    let size: u32 = kernel_region
-        .len()
-        .expect("invalid kernel_region")
-        .try_into()
-        .map_err(|_| Error::PropertyValueTooLarge)?;
+    // Only pVM firmware reads /config, and it is 32-bit only.
+    let (Ok(addr), Ok(size)) = (
+        u32::try_from(kernel_region.start),
+        u32::try_from(kernel_region.len().expect("invalid kernel_region")),
+    ) else {
+        return Ok(());
+    };
 
     let config_node = fdt.root_mut().subnode_mut("config")?;
     config_node.set_prop("kernel-address", addr)?;
