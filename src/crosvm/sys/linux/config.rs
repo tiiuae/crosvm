@@ -70,6 +70,14 @@ pub struct VfioOption {
     /// The symbol that labels the overlay device tree node which corresponds to this
     /// VFIO device.
     pub dt_symbol: Option<String>,
+
+    /// Guest physical address at which to place this platform VFIO device's MMIO region,
+    /// instead of auto-allocating from the platform MMIO pool. Platform devices only.
+    pub guest_mmio_base: Option<u64>,
+
+    /// Size of the region placed at `guest_mmio_base`; must equal the device's region 0
+    /// size. Required when `guest_mmio_base` is set.
+    pub guest_mmio_size: Option<u64>,
 }
 
 #[derive(Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -507,6 +515,29 @@ mod tests {
             vfio.guest_address,
             Some(PciAddress::new(0, 0x42, 0x15, 4).unwrap())
         );
+    }
+
+    #[test]
+    fn vfio_platform_guest_mmio_base() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--vfio",
+                "/path/to/dev,iommu=pkvm-iommu,dt-symbol=host1x_syncpt,guest-mmio-base=0x60000000,guest-mmio-size=0x4000000",
+                "/dev/null",
+            ],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let vfio = config.vfio.first().unwrap();
+
+        assert_eq!(vfio.path, PathBuf::from("/path/to/dev"));
+        assert_eq!(vfio.iommu, IommuDevType::PkvmPviommu);
+        assert_eq!(vfio.dt_symbol.as_deref(), Some("host1x_syncpt"));
+        assert_eq!(vfio.guest_mmio_base, Some(0x6000_0000));
+        assert_eq!(vfio.guest_mmio_size, Some(0x0400_0000));
     }
 
     #[test]
