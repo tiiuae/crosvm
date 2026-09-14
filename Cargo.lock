@@ -3526,10 +3526,16 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "argh",
+ "base",
  "devices",
  "jail",
+ "libc",
  "minijail",
  "serde",
+ "snapshot",
+ "thiserror 1.0.38",
+ "virtio_sys",
+ "vm_memory",
 ]
 
 [[package]]
