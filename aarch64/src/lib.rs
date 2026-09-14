@@ -233,14 +233,13 @@ impl PayloadType {
 // When static swiotlb allocation is required, returns the address it should be allocated at.
 // Otherwise, returns None.
 fn get_swiotlb_addr(
+    phys_mem_start: u64,
     memory_size: u64,
     swiotlb_size: u64,
     hypervisor: &(impl Hypervisor + ?Sized),
 ) -> Option<GuestAddress> {
     if hypervisor.check_capability(HypervisorCap::StaticSwiotlbAllocationRequired) {
-        Some(GuestAddress(
-            AARCH64_PHYS_MEM_START + memory_size - swiotlb_size,
-        ))
+        Some(GuestAddress(phys_mem_start + memory_size - swiotlb_size))
     } else {
         None
     }
@@ -368,6 +367,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 fn load_kernel(
+    phys_mem_start: u64,
     guest_mem: &GuestMemory,
     kernel_start: GuestAddress,
     mut kernel_image: &mut File,
@@ -376,7 +376,7 @@ fn load_kernel(
         guest_mem,
         kernel_start,
         &mut kernel_image,
-        AARCH64_PHYS_MEM_START,
+        phys_mem_start,
     ) {
         return Ok(elf_kernel);
     }
@@ -424,6 +424,8 @@ fn main_memory_size(components: &VmComponents, hypervisor: &(impl Hypervisor + ?
 pub struct ArchMemoryLayout {
     pci_cam: AddressRange,
     pci_mem: AddressRange,
+    /// Guest-physical base of main RAM.
+    phys_mem_start: u64,
 }
 
 impl arch::LinuxArch for AArch64 {
@@ -448,9 +450,10 @@ impl arch::LinuxArch for AArch64 {
         let pci_cam = AddressRange::from_start_and_size(pci_cam_start, pci_cam_size).ok_or(
             Error::ConfigurePciCam("PCI CAM region overflowed".to_string()),
         )?;
-        if pci_cam.end >= AARCH64_PHYS_MEM_START {
+        let phys_mem_start = components.ram_base.unwrap_or(AARCH64_PHYS_MEM_START);
+        if pci_cam.end >= phys_mem_start {
             return Err(Error::ConfigurePciCam(format!(
-                "PCI CAM ({pci_cam:?}) must be before start of RAM ({AARCH64_PHYS_MEM_START:#x})"
+                "PCI CAM ({pci_cam:?}) must be before start of RAM ({phys_mem_start:#x})"
             )));
         }
 
@@ -467,20 +470,24 @@ impl arch::LinuxArch for AArch64 {
             .unwrap(),
         };
 
-        Ok(ArchMemoryLayout { pci_cam, pci_mem })
+        Ok(ArchMemoryLayout {
+            pci_cam,
+            pci_mem,
+            phys_mem_start,
+        })
     }
 
     /// Returns a Vec of the valid memory addresses.
     /// These should be used to configure the GuestMemory structure for the platform.
     fn guest_memory_layout(
         components: &VmComponents,
-        _arch_memory_layout: &Self::ArchMemoryLayout,
+        arch_memory_layout: &Self::ArchMemoryLayout,
         hypervisor: &impl Hypervisor,
     ) -> std::result::Result<Vec<(GuestAddress, u64, MemoryRegionOptions)>, Self::Error> {
         let main_memory_size = main_memory_size(components, hypervisor);
 
         let mut memory_regions = vec![(
-            GuestAddress(AARCH64_PHYS_MEM_START),
+            GuestAddress(arch_memory_layout.phys_mem_start),
             main_memory_size,
             MemoryRegionOptions::new().align(get_block_size()),
         )];
@@ -495,7 +502,12 @@ impl arch::LinuxArch for AArch64 {
         }
 
         if let Some(size) = components.swiotlb {
-            if let Some(addr) = get_swiotlb_addr(components.memory_size, size, hypervisor) {
+            if let Some(addr) = get_swiotlb_addr(
+                arch_memory_layout.phys_mem_start,
+                components.memory_size,
+                size,
+                hypervisor,
+            ) {
                 memory_regions.push((
                     addr,
                     size,
@@ -591,9 +603,13 @@ impl arch::LinuxArch for AArch64 {
         });
         let payload_address = match fdt_position {
             // If FDT is at the start RAM, the payload needs to go somewhere after it.
-            FdtPosition::Start => GuestAddress(AARCH64_PHYS_MEM_START + AARCH64_FDT_MAX_SIZE),
+            FdtPosition::Start => {
+                GuestAddress(arch_memory_layout.phys_mem_start + AARCH64_FDT_MAX_SIZE)
+            }
             // Otherwise, put the payload at the start of RAM.
-            FdtPosition::End | FdtPosition::AfterPayload => GuestAddress(AARCH64_PHYS_MEM_START),
+            FdtPosition::End | FdtPosition::AfterPayload => {
+                GuestAddress(arch_memory_layout.phys_mem_start)
+            }
         };
 
         // separate out image loading from other setup to get a specific error for
@@ -615,7 +631,12 @@ impl arch::LinuxArch for AArch64 {
                 )
             }
             VmImage::Kernel(ref mut kernel_image) => {
-                let loaded_kernel = load_kernel(&mem, payload_address, kernel_image)?;
+                let loaded_kernel = load_kernel(
+                    arch_memory_layout.phys_mem_start,
+                    &mem,
+                    payload_address,
+                    kernel_image,
+                )?;
                 let kernel_end = loaded_kernel.address_range.end;
                 let mut payload_end = GuestAddress(kernel_end);
                 initrd = match components.initrd_image {
@@ -623,8 +644,8 @@ impl arch::LinuxArch for AArch64 {
                         let mut initrd_file = initrd_file;
                         let initrd_addr = (kernel_end + 1 + (AARCH64_INITRD_ALIGN - 1))
                             & !(AARCH64_INITRD_ALIGN - 1);
-                        let initrd_max_size =
-                            main_memory_size.saturating_sub(initrd_addr - AARCH64_PHYS_MEM_START);
+                        let initrd_max_size = main_memory_size
+                            .saturating_sub(initrd_addr - arch_memory_layout.phys_mem_start);
                         let initrd_addr = GuestAddress(initrd_addr);
                         let initrd_size =
                             arch::load_image(&mem, &mut initrd_file, initrd_addr, initrd_max_size)
@@ -641,10 +662,10 @@ impl arch::LinuxArch for AArch64 {
             }
         };
 
-        let memory_end = GuestAddress(AARCH64_PHYS_MEM_START + main_memory_size);
+        let memory_end = GuestAddress(arch_memory_layout.phys_mem_start + main_memory_size);
 
         let fdt_address = match fdt_position {
-            FdtPosition::Start => GuestAddress(AARCH64_PHYS_MEM_START),
+            FdtPosition::Start => GuestAddress(arch_memory_layout.phys_mem_start),
             FdtPosition::End => {
                 let addr = memory_end
                     .checked_sub(AARCH64_FDT_MAX_SIZE)
@@ -1073,7 +1094,12 @@ impl arch::LinuxArch for AArch64 {
             psci_version,
             components.swiotlb.map(|size| {
                 (
-                    get_swiotlb_addr(components.memory_size, size, vm.get_hypervisor()),
+                    get_swiotlb_addr(
+                        arch_memory_layout.phys_mem_start,
+                        components.memory_size,
+                        size,
+                        vm.get_hypervisor(),
+                    ),
                     size,
                 )
             }),

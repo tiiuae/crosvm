@@ -88,6 +88,8 @@ use crate::crosvm::config::parse_cpu_btreemap_u32;
     any(target_os = "android", target_os = "linux")
 ))]
 use crate::crosvm::config::parse_cpu_frequencies;
+#[cfg(target_arch = "aarch64")]
+use crate::crosvm::config::parse_hex_or_decimal;
 use crate::crosvm::config::parse_mmio_address_range;
 use crate::crosvm::config::parse_pflash_parameters;
 use crate::crosvm::config::parse_serial_options;
@@ -1731,6 +1733,11 @@ pub struct RunCommand {
     /// Only available when crosvm is built with feature 'pvclock'.
     pub pvclock: Option<bool>,
 
+    #[cfg(target_arch = "aarch64")]
+    #[argh(option, arg_name = "ADDR", from_str_fn(parse_hex_or_decimal))]
+    /// (EXPERIMENTAL) Guest-physical base of main RAM, hex or decimal (default: 0x80000000)
+    pub ram_base: Option<u64>,
+
     #[argh(option, long = "restore", arg_name = "PATH")]
     /// path of the snapshot that is used to restore the VM on startup.
     pub restore: Option<PathBuf>,
@@ -2451,6 +2458,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             }
             cfg.no_pmu = cmd.no_pmu.unwrap_or_default();
             cfg.swiotlb = cmd.swiotlb;
+            cfg.ram_base = cmd.ram_base;
         }
 
         #[cfg(all(target_os = "android", target_arch = "aarch64"))]

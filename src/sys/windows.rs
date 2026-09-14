@@ -2221,6 +2221,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         fw_cfg_parameters: cfg.fw_cfg_parameters.clone(),
         itmt: false,
         pvm_fw: None,
+        ram_base: cfg.ram_base,
         pci_config: cfg.pci_config,
         #[cfg(target_arch = "x86_64")]
         smbios: cfg.smbios.clone(),

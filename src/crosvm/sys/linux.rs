@@ -1686,6 +1686,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             .unwrap_or(256)
             .checked_mul(1024 * 1024)
             .ok_or_else(|| anyhow!("requested memory size too large"))?,
+        ram_base: cfg.ram_base,
         swiotlb,
         fw_cfg_enable,
         bootorder_fw_cfg_blob: Vec::new(),

@@ -530,6 +530,8 @@ pub struct VmComponents {
     /// A file to load as pVM firmware. Must be `Some` iff
     /// `hv_cfg.protection_type == ProtectionType::UnprotectedWithFirmware`.
     pub pvm_fw: Option<File>,
+    /// Guest-physical base of main RAM; None means the arch default.
+    pub ram_base: Option<u64>,
     pub rt_cpus: CpuSet,
     #[cfg(target_arch = "x86_64")]
     pub smbios: SmbiosOptions,
