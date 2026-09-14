@@ -1020,6 +1020,11 @@ fn create_devices(
         let mut coiommu_attached_endpoints = Vec::new();
 
         for vfio_dev in &cfg.vfio {
+            let guest_mmio = match (vfio_dev.guest_mmio_base, vfio_dev.guest_mmio_size) {
+                (Some(base), Some(size)) => Some((base, size)),
+                (None, None) => None,
+                _ => bail!("guest-mmio-base and guest-mmio-size must be specified together"),
+            };
             let (dev, jail, viommu_mapper) = create_vfio_device(
                 cfg.jail_config.as_ref(),
                 vm,
@@ -1032,6 +1037,7 @@ fn create_devices(
                 Some(&mut coiommu_attached_endpoints),
                 vfio_dev.iommu,
                 vfio_dev.dt_symbol.clone(),
+                guest_mmio,
                 vfio_container_manager,
             )?;
             match dev {
@@ -2885,6 +2891,7 @@ fn add_hotplug_device(
                 } else {
                     IommuDevType::NoIommu
                 },
+                None,
                 None,
                 vfio_container_manager,
             )?;
