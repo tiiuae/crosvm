@@ -360,7 +360,7 @@ pub enum InputDeviceOption {
     },
 }
 
-fn parse_hex_or_decimal(maybe_hex_string: &str) -> Result<u64, String> {
+pub fn parse_hex_or_decimal(maybe_hex_string: &str) -> Result<u64, String> {
     // Parse string starting with 0x as hex and others as numbers.
     if let Some(hex_string) = maybe_hex_string.strip_prefix("0x") {
         u64::from_str_radix(hex_string, 16)
@@ -742,6 +742,7 @@ pub struct Config {
     pub pvclock: bool,
     /// Must be `Some` iff `protection_type == ProtectionType::UnprotectedWithFirmware`.
     pub pvm_fw: Option<PathBuf>,
+    pub ram_base: Option<u64>,
     pub restore_path: Option<PathBuf>,
     pub rt_cpus: CpuSet,
     /// Note: virtio-console devices are present both in the serial_parameters field and in the
@@ -1003,6 +1004,7 @@ impl Default for Config {
             #[cfg(target_arch = "aarch64")]
             sve: None,
             swap_dir: None,
+            ram_base: None,
             swiotlb: None,
             #[cfg(target_os = "android")]
             task_profiles: Vec::new(),
